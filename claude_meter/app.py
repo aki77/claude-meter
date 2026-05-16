@@ -1,4 +1,6 @@
+import subprocess
 import threading
+from dataclasses import dataclass, field
 
 import rumps
 
@@ -7,6 +9,8 @@ from .usage import UsageData, fetch_usage
 
 POLL_INTERVAL = 60
 ICON_PATH = "/Applications/Claude.app/Contents/Resources/TrayIconTemplate.png"
+ALERT_THRESHOLDS = (50, 75, 90)
+ALERT_MARK = "⚠️"
 
 
 def _format_reset(minutes: int) -> str:
@@ -19,6 +23,34 @@ def _format_reset(minutes: int) -> str:
     return f"{hours}h {mins}m" if mins else f"{hours}h"
 
 
+def _crossed_threshold(pct: int, last_notified: int) -> int:
+    return max(
+        (t for t in ALERT_THRESHOLDS if pct >= t > last_notified),
+        default=0,
+    )
+
+
+@dataclass
+class _Series:
+    label: str
+    menu_item: rumps.MenuItem
+    notified_at: int = 0
+    prev_reset: int = 0
+    pct: int = field(default=0, init=False)
+    reset_minutes: int = field(default=0, init=False)
+
+    def update(self, pct: int, reset_minutes: int) -> int:
+        if reset_minutes > self.prev_reset:
+            self.notified_at = 0
+        self.prev_reset = reset_minutes
+        self.pct = pct
+        self.reset_minutes = reset_minutes
+        crossed = _crossed_threshold(pct, self.notified_at)
+        if crossed:
+            self.notified_at = crossed
+        return crossed
+
+
 class ClaudeMeterApp(rumps.App):
     def __init__(self) -> None:
         super().__init__("Claude Meter", title="...", icon=ICON_PATH, template=True, quit_button=None)
@@ -28,14 +60,14 @@ class ClaudeMeterApp(rumps.App):
         self._update_event = threading.Event()
         self._fetching = False
 
-        self._session_item = rumps.MenuItem("5h Session: -")
-        self._weekly_item = rumps.MenuItem("7d Weekly: -")
+        self._session = _Series(label="5h Session", menu_item=rumps.MenuItem("5h Session: -"))
+        self._weekly = _Series(label="7d Weekly", menu_item=rumps.MenuItem("7d Weekly: -"))
         self._refresh_item = rumps.MenuItem("Refresh", callback=self._on_refresh)
         self._quit_item = rumps.MenuItem("Quit", callback=rumps.quit_application)
 
         self.menu = [
-            self._session_item,
-            self._weekly_item,
+            self._session.menu_item,
+            self._weekly.menu_item,
             None,
             self._refresh_item,
             None,
@@ -59,23 +91,52 @@ class ClaudeMeterApp(rumps.App):
 
         if token_missing:
             self.title = "?"
-            self._session_item.title = "Claude Code token not found"
-            self._weekly_item.title = "Start Claude Code to authenticate"
+            self._session.menu_item.title = "Claude Code token not found"
+            self._weekly.menu_item.title = "Start Claude Code to authenticate"
             return
 
-        self.title = f"{data.session_pct}%" if data else "?"
         if data is None:
-            self._session_item.title = "5h Session: unavailable"
-            self._weekly_item.title = "7d Weekly: unavailable"
-        else:
-            self._session_item.title = (
-                f"5h Session: {data.session_pct}%"
-                f"  (resets in {_format_reset(data.session_reset_minutes)})"
+            self.title = "?"
+            self._session.menu_item.title = f"{self._session.label}: unavailable"
+            self._weekly.menu_item.title = f"{self._weekly.label}: unavailable"
+            return
+
+        pairs = (
+            (self._session, data.session_pct, data.session_reset_minutes),
+            (self._weekly, data.weekly_pct, data.weekly_reset_minutes),
+        )
+        warn = False
+        for series, pct, reset_minutes in pairs:
+            crossed = series.update(pct, reset_minutes)
+            if crossed:
+                self._notify(
+                    title=f"Claude {series.label} at {pct}%",
+                    subtitle=f"Resets in {_format_reset(reset_minutes)}",
+                )
+            series.menu_item.title = (
+                f"{series.label}: {pct}%  (resets in {_format_reset(reset_minutes)})"
             )
-            self._weekly_item.title = (
-                f"7d Weekly: {data.weekly_pct}%"
-                f"  (resets in {_format_reset(data.weekly_reset_minutes)})"
+            if pct >= ALERT_THRESHOLDS[0]:
+                warn = True
+
+        prefix = f"{ALERT_MARK} " if warn else ""
+        self.title = f"{prefix}{data.session_pct}%"
+
+    @staticmethod
+    def _notify(title: str, subtitle: str) -> None:
+        script = (
+            'on run argv\n'
+            '  display notification (item 2 of argv) with title (item 1 of argv) sound name "Glass"\n'
+            'end run'
+        )
+        try:
+            subprocess.Popen(
+                ["osascript", "-e", script, title, subtitle],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
+        except Exception:
+            pass
 
     def _fetch(self) -> None:
         with self._lock:

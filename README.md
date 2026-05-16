@@ -45,3 +45,5 @@ Quit
 ```
 
 Usage is polled every 60 seconds. Click **Refresh** to update immediately.
+
+When the 5-hour or 7-day utilization first crosses 50%, 75%, or 90%, a macOS notification is posted and the menu bar title is prefixed with ⚠️. Counters reset automatically when a new rate-limit window begins.
