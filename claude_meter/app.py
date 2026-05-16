@@ -6,6 +6,7 @@ from .auth import get_token
 from .usage import UsageData, fetch_usage
 
 POLL_INTERVAL = 60
+ICON_PATH = "/Applications/Claude.app/Contents/Resources/TrayIconTemplate.png"
 
 
 def _format_reset(minutes: int) -> str:
@@ -20,7 +21,7 @@ def _format_reset(minutes: int) -> str:
 
 class ClaudeMeterApp(rumps.App):
     def __init__(self) -> None:
-        super().__init__("Claude: ...", quit_button=None)
+        super().__init__("Claude Meter", title="...", icon=ICON_PATH, template=True, quit_button=None)
         self._token_missing = False
         self._data: UsageData | None = None
         self._lock = threading.Lock()
@@ -57,12 +58,12 @@ class ClaudeMeterApp(rumps.App):
             data = self._data
 
         if token_missing:
-            self.title = "Claude: ?"
+            self.title = "?"
             self._session_item.title = "Claude Code token not found"
             self._weekly_item.title = "Start Claude Code to authenticate"
             return
 
-        self.title = f"Claude: {data.session_pct}%" if data else "Claude: ?"
+        self.title = f"{data.session_pct}%" if data else "?"
         if data is None:
             self._session_item.title = "5h Session: unavailable"
             self._weekly_item.title = "7d Weekly: unavailable"
