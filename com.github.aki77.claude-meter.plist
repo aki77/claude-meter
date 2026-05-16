@@ -6,7 +6,7 @@
     <string>com.github.aki77.claude-meter</string>
     <key>ProgramArguments</key>
     <array>
-        <string>CLAUDE_METER_VENV/bin/claude-meter</string>
+        <string>CLAUDE_METER_VENV/claude-meter</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
