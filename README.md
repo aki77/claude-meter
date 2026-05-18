@@ -2,6 +2,8 @@
 
 macOS menu bar app that shows your Claude API usage.
 
+![claude-meter demo](https://i.gyazo.com/88dcc4b6d93646c17b2bcd392cec879e.png)
+
 ## How it works
 
 Sends a minimal request to `api.anthropic.com/v1/messages` and reads usage from the response headers (`anthropic-ratelimit-unified-5h-utilization`, `anthropic-ratelimit-unified-7d-utilization`). Authentication reuses the OAuth token that Claude Code stores in Keychain — no API key setup required.
