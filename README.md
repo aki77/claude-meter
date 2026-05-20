@@ -2,7 +2,7 @@
 
 macOS menu bar app that shows your Claude API usage.
 
-![claude-meter demo](https://i.gyazo.com/88dcc4b6d93646c17b2bcd392cec879e.png)
+![claude-meter demo](https://i.gyazo.com/c909657d09e8b9f80073a5469c1c9807.png)
 
 ## How it works
 
