@@ -1,6 +1,7 @@
 import subprocess
 import threading
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 
 import rumps
 
@@ -11,16 +12,38 @@ POLL_INTERVAL = 60
 ICON_PATH = "/Applications/Claude.app/Contents/Resources/TrayIconTemplate.png"
 ALERT_THRESHOLDS = (50, 75, 90)
 ALERT_MARK = "⚠️"
+WEEKLY_WINDOW_MIN = 7 * 24 * 60
+PACE_PREFIX = "  Projected at reset: "
+PACE_PLACEHOLDER = f"{PACE_PREFIX}-"
 
 
-def _format_reset(minutes: int) -> str:
+def _format_duration(minutes: int) -> str:
     if minutes <= 0:
         return "now"
-    if minutes < 60:
-        return f"{minutes}m"
-    hours = minutes // 60
-    mins = minutes % 60
-    return f"{hours}h {mins}m" if mins else f"{hours}h"
+    days, rem = divmod(minutes, 24 * 60)
+    if days:
+        hours = rem // 60
+        return f"{days}d {hours}h" if hours else f"{days}d"
+    hours, mins = divmod(rem, 60)
+    if hours:
+        return f"{hours}h {mins}m" if mins else f"{hours}h"
+    return f"{mins}m"
+
+
+def _format_pace(weekly_pct: int, weekly_reset_minutes: int) -> str:
+    elapsed = WEEKLY_WINDOW_MIN - weekly_reset_minutes
+    if elapsed <= 0:
+        return f"{PACE_PREFIX}--"
+    projected = round(weekly_pct * WEEKLY_WINDOW_MIN / elapsed)
+    if projected <= 100:
+        return f"{PACE_PREFIX}{projected}%"
+    minutes_to_deplete = round(elapsed * (100 - weekly_pct) / weekly_pct)
+    deplete_at = datetime.now() + timedelta(minutes=minutes_to_deplete)
+    return (
+        f"{PACE_PREFIX}{projected}%  "
+        f"(depletes in {_format_duration(minutes_to_deplete)}, "
+        f"{deplete_at.strftime('%-m/%-d %H:%M')})"
+    )
 
 
 def _crossed_threshold(pct: int, last_notified: int) -> int:
@@ -62,12 +85,14 @@ class ClaudeMeterApp(rumps.App):
 
         self._session = _Series(label="5h Session", menu_item=rumps.MenuItem("5h Session: -"))
         self._weekly = _Series(label="7d Weekly", menu_item=rumps.MenuItem("7d Weekly: -"))
+        self._weekly_pace = rumps.MenuItem(PACE_PLACEHOLDER)
         self._refresh_item = rumps.MenuItem("Refresh", callback=self._on_refresh)
         self._quit_item = rumps.MenuItem("Quit", callback=rumps.quit_application)
 
         self.menu = [
             self._session.menu_item,
             self._weekly.menu_item,
+            self._weekly_pace,
             None,
             self._refresh_item,
             None,
@@ -93,12 +118,14 @@ class ClaudeMeterApp(rumps.App):
             self.title = "?"
             self._session.menu_item.title = "Claude Code token not found"
             self._weekly.menu_item.title = "Start Claude Code to authenticate"
+            self._weekly_pace.title = PACE_PLACEHOLDER
             return
 
         if data is None:
             self.title = "?"
             self._session.menu_item.title = f"{self._session.label}: unavailable"
             self._weekly.menu_item.title = f"{self._weekly.label}: unavailable"
+            self._weekly_pace.title = PACE_PLACEHOLDER
             return
 
         pairs = (
@@ -111,13 +138,17 @@ class ClaudeMeterApp(rumps.App):
             if crossed:
                 self._notify(
                     title=f"Claude {series.label} at {pct}%",
-                    subtitle=f"Resets in {_format_reset(reset_minutes)}",
+                    subtitle=f"Resets in {_format_duration(reset_minutes)}",
                 )
             series.menu_item.title = (
-                f"{series.label}: {pct}%  (resets in {_format_reset(reset_minutes)})"
+                f"{series.label}: {pct}%  (resets in {_format_duration(reset_minutes)})"
             )
             if pct >= ALERT_THRESHOLDS[0]:
                 warn = True
+
+        self._weekly_pace.title = _format_pace(
+            data.weekly_pct, data.weekly_reset_minutes
+        )
 
         prefix = f"{ALERT_MARK} " if warn else ""
         self.title = f"{prefix}{data.session_pct}%"

@@ -41,10 +41,13 @@ The menu bar shows `Claude: N%` (5-hour session usage). Click to see details:
 ```
 5h Session: 4%  (resets in 4h 29m)
 7d Weekly:  9%  (resets in 3d 2h)
+  Projected at reset: 21%
 
 Refresh
 Quit
 ```
+
+The `Projected at reset` line linearly extrapolates the 7-day usage from how much of the current window has elapsed. If the projection exceeds 100%, it appends the time and absolute clock at which the budget would be depleted at the current pace (e.g. `Projected at reset: 130%  (depletes in 5d 9h, 5/26 14:30)`).
 
 Usage is polled every 60 seconds. Click **Refresh** to update immediately.
 
