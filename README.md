@@ -41,13 +41,13 @@ The menu bar shows `Claude: N%` (5-hour session usage). Click to see details:
 ```
 5h Session: 4%  (resets in 4h 29m)
 7d Weekly:  9%  (resets in 3d 2h)
-  Projected at reset: 21%
+  On pace if < 14%
 
 Refresh
 Quit
 ```
 
-The `Projected at reset` line extrapolates the 7-day usage from how much of the current window has elapsed, dampened early in the window so a short burst right after a reset doesn't blow up the prediction. If the projection exceeds 100%, it appends the time and absolute clock at which the budget would be depleted at that pace (e.g. `Projected at reset: 130%  (depletes in 5d 9h, 5/26 14:30)`).
+The `On pace if < N%` line shows the cumulative usage threshold for staying on an even pace through the 7-day window. For example, on day 1 the threshold is 14% (1/7 of the budget); on day 2 it's 29%, and so on. If your current usage is below this number, you're on track.
 
 Usage is polled every 60 seconds. Click **Refresh** to update immediately.
 

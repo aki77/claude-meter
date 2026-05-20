@@ -1,8 +1,6 @@
-import math
 import subprocess
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 
 import rumps
 
@@ -14,7 +12,7 @@ ICON_PATH = "/Applications/Claude.app/Contents/Resources/TrayIconTemplate.png"
 ALERT_THRESHOLDS = (50, 75, 90)
 ALERT_MARK = "⚠️"
 WEEKLY_WINDOW_MIN = 7 * 24 * 60
-PACE_PREFIX = "  Projected at reset: "
+PACE_PREFIX = "  On pace if < "
 PACE_PLACEHOLDER = f"{PACE_PREFIX}-"
 
 
@@ -31,32 +29,11 @@ def _format_duration(minutes: int) -> str:
     return f"{mins}m"
 
 
-def _projected_with_decay(weekly_pct: int, elapsed_minutes: int) -> int:
-    if elapsed_minutes <= 0:
-        return weekly_pct
-    naive = weekly_pct * WEEKLY_WINDOW_MIN / elapsed_minutes
-    confidence = math.sqrt(elapsed_minutes / WEEKLY_WINDOW_MIN)
-    return round(weekly_pct + (naive - weekly_pct) * confidence)
-
-
-def _format_pace(weekly_pct: int, weekly_reset_minutes: int) -> str:
-    elapsed = WEEKLY_WINDOW_MIN - weekly_reset_minutes
-    if elapsed <= 0:
-        return f"{PACE_PREFIX}--"
-    projected = _projected_with_decay(weekly_pct, elapsed)
-    if projected <= 100:
-        return f"{PACE_PREFIX}{projected}%"
-    if projected == weekly_pct:
-        return f"{PACE_PREFIX}{projected}%"
-    minutes_to_deplete = round(
-        weekly_reset_minutes * (100 - weekly_pct) / (projected - weekly_pct)
-    )
-    deplete_at = datetime.now() + timedelta(minutes=minutes_to_deplete)
-    return (
-        f"{PACE_PREFIX}{projected}%  "
-        f"(depletes in {_format_duration(minutes_to_deplete)}, "
-        f"{deplete_at.strftime('%-m/%-d %H:%M')})"
-    )
+def _format_pace_target(weekly_reset_minutes: int) -> str:
+    elapsed_min = max(0, WEEKLY_WINDOW_MIN - weekly_reset_minutes)
+    day = elapsed_min // (24 * 60) + 1
+    pace_pct = round(day / 7 * 100)
+    return f"{PACE_PREFIX}{pace_pct}%"
 
 
 def _crossed_threshold(pct: int, last_notified: int) -> int:
@@ -159,9 +136,7 @@ class ClaudeMeterApp(rumps.App):
             if pct >= ALERT_THRESHOLDS[0]:
                 warn = True
 
-        self._weekly_pace.title = _format_pace(
-            data.weekly_pct, data.weekly_reset_minutes
-        )
+        self._weekly_pace.title = _format_pace_target(data.weekly_reset_minutes)
 
         prefix = f"{ALERT_MARK} " if warn else ""
         self.title = f"{prefix}{data.session_pct}%"
