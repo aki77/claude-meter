@@ -12,8 +12,8 @@ ICON_PATH = "/Applications/Claude.app/Contents/Resources/TrayIconTemplate.png"
 ALERT_THRESHOLDS = (50, 75, 90)
 ALERT_MARK = "⚠️"
 WEEKLY_WINDOW_MIN = 7 * 24 * 60
-PACE_PREFIX = "  On pace if < "
-PACE_PLACEHOLDER = f"{PACE_PREFIX}-"
+PROJECTED_PREFIX = "  Projected: "
+PROJECTED_PLACEHOLDER = f"{PROJECTED_PREFIX}-"
 
 
 def _format_duration(minutes: int) -> str:
@@ -29,11 +29,19 @@ def _format_duration(minutes: int) -> str:
     return f"{mins}m"
 
 
-def _format_pace_target(weekly_reset_minutes: int) -> str:
+def _week_day(weekly_reset_minutes: int) -> int:
     elapsed_min = max(0, WEEKLY_WINDOW_MIN - weekly_reset_minutes)
-    day = elapsed_min // (24 * 60) + 1
-    pace_pct = round(day / 7 * 100)
-    return f"{PACE_PREFIX}{pace_pct}%"
+    return min(elapsed_min // (24 * 60) + 1, 7)
+
+
+def _projected_weekly_pct(weekly_pct: int, weekly_reset_minutes: int) -> int:
+    return round(weekly_pct * 7 / _week_day(weekly_reset_minutes))
+
+
+def _format_projection(weekly_pct: int, weekly_reset_minutes: int) -> str:
+    day = _week_day(weekly_reset_minutes)
+    projected = round(weekly_pct * 7 / day)
+    return f"{PROJECTED_PREFIX}{projected}%  (day {day} of 7)"
 
 
 def _crossed_threshold(pct: int, last_notified: int) -> int:
@@ -75,14 +83,14 @@ class ClaudeMeterApp(rumps.App):
 
         self._session = _Series(label="5h Session", menu_item=rumps.MenuItem("5h Session: -"))
         self._weekly = _Series(label="7d Weekly", menu_item=rumps.MenuItem("7d Weekly: -"))
-        self._weekly_pace = rumps.MenuItem(PACE_PLACEHOLDER)
+        self._weekly_projection = rumps.MenuItem(PROJECTED_PLACEHOLDER)
         self._refresh_item = rumps.MenuItem("Refresh", callback=self._on_refresh)
         self._quit_item = rumps.MenuItem("Quit", callback=rumps.quit_application)
 
         self.menu = [
             self._session.menu_item,
             self._weekly.menu_item,
-            self._weekly_pace,
+            self._weekly_projection,
             None,
             self._refresh_item,
             None,
@@ -108,14 +116,14 @@ class ClaudeMeterApp(rumps.App):
             self.title = "?"
             self._session.menu_item.title = "Claude Code token not found"
             self._weekly.menu_item.title = "Start Claude Code to authenticate"
-            self._weekly_pace.title = PACE_PLACEHOLDER
+            self._weekly_projection.title = PROJECTED_PLACEHOLDER
             return
 
         if data is None:
             self.title = "?"
             self._session.menu_item.title = f"{self._session.label}: unavailable"
             self._weekly.menu_item.title = f"{self._weekly.label}: unavailable"
-            self._weekly_pace.title = PACE_PLACEHOLDER
+            self._weekly_projection.title = PROJECTED_PLACEHOLDER
             return
 
         pairs = (
@@ -136,7 +144,10 @@ class ClaudeMeterApp(rumps.App):
             if pct >= ALERT_THRESHOLDS[0]:
                 warn = True
 
-        self._weekly_pace.title = _format_pace_target(data.weekly_reset_minutes)
+        projected = _projected_weekly_pct(data.weekly_pct, data.weekly_reset_minutes)
+        self._weekly_projection.title = _format_projection(data.weekly_pct, data.weekly_reset_minutes)
+        if projected > 100:
+            warn = True
 
         prefix = f"{ALERT_MARK} " if warn else ""
         self.title = f"{prefix}{data.session_pct}%"
