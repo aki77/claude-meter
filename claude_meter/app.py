@@ -1,3 +1,4 @@
+import math
 import subprocess
 import threading
 from dataclasses import dataclass, field
@@ -30,14 +31,26 @@ def _format_duration(minutes: int) -> str:
     return f"{mins}m"
 
 
+def _projected_with_decay(weekly_pct: int, elapsed_minutes: int) -> int:
+    if elapsed_minutes <= 0:
+        return weekly_pct
+    naive = weekly_pct * WEEKLY_WINDOW_MIN / elapsed_minutes
+    confidence = math.sqrt(elapsed_minutes / WEEKLY_WINDOW_MIN)
+    return round(weekly_pct + (naive - weekly_pct) * confidence)
+
+
 def _format_pace(weekly_pct: int, weekly_reset_minutes: int) -> str:
     elapsed = WEEKLY_WINDOW_MIN - weekly_reset_minutes
     if elapsed <= 0:
         return f"{PACE_PREFIX}--"
-    projected = round(weekly_pct * WEEKLY_WINDOW_MIN / elapsed)
+    projected = _projected_with_decay(weekly_pct, elapsed)
     if projected <= 100:
         return f"{PACE_PREFIX}{projected}%"
-    minutes_to_deplete = round(elapsed * (100 - weekly_pct) / weekly_pct)
+    if projected == weekly_pct:
+        return f"{PACE_PREFIX}{projected}%"
+    minutes_to_deplete = round(
+        weekly_reset_minutes * (100 - weekly_pct) / (projected - weekly_pct)
+    )
     deplete_at = datetime.now() + timedelta(minutes=minutes_to_deplete)
     return (
         f"{PACE_PREFIX}{projected}%  "
