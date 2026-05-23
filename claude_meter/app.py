@@ -141,7 +141,8 @@ class ClaudeMeterApp(rumps.App):
             series.menu_item.title = (
                 f"{series.label}: {pct}%  (resets in {_format_duration(reset_minutes)})"
             )
-            if pct >= ALERT_THRESHOLDS[0]:
+            threshold = ALERT_THRESHOLDS[1] if series is self._session else ALERT_THRESHOLDS[2]
+            if pct >= threshold:
                 warn = True
 
         projected = _projected_weekly_pct(data.weekly_pct, data.weekly_reset_minutes)
