@@ -62,4 +62,4 @@ The `Projected` line shows the estimated total usage at the end of the 7-day win
 
 Usage is polled every 60 seconds. Click **Refresh** to update immediately.
 
-The menu bar title is prefixed with ⚠️ when your weekly usage exceeds the day-rounded pace (more than 1 day's worth used within the first 24h, more than 2 days' worth within 48h, and so on) or when 5-hour / 7-day utilization first crosses 50%, 75%, or 90%. A macOS notification is also posted on those 50/75/90% thresholds. Counters reset automatically when a new rate-limit window begins.
+The menu bar title is prefixed with ⚠️ when any of the following conditions are met: 5-hour session usage reaches 75%, 7-day weekly usage reaches 90%, or the projected weekly usage exceeds 100%. A macOS notification is also posted when 5-hour / 7-day utilization first crosses 50%, 75%, or 90%. Counters reset automatically when a new rate-limit window begins.
