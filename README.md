@@ -6,7 +6,17 @@ macOS menu bar app that shows your Claude API usage.
 
 ## How it works
 
-Sends a minimal request to `api.anthropic.com/v1/messages` and reads usage from the response headers (`anthropic-ratelimit-unified-5h-utilization`, `anthropic-ratelimit-unified-7d-utilization`). Authentication reuses the OAuth token that Claude Code stores in Keychain — no API key setup required.
+Polls `api.anthropic.com/api/oauth/usage` and reads the `five_hour` / `seven_day` utilization it returns. This endpoint consumes no inference quota. Authentication reuses the OAuth token that Claude Code stores in Keychain — no API key setup required.
+
+When usage cannot be read the title shows `?` with the reason (expired auth, rate limit, network error) rather than `0%`, and the last known reading is kept and marked `(stale)`.
+
+### Keeping the token fresh
+
+The OAuth token Claude Code stores in Keychain expires after a few hours, and it is only refreshed when the CLI itself talks to the API. If you mostly use the Claude desktop app, nothing refreshes it — which used to leave the meter stuck at `0%`.
+
+On detecting an expired token (or a 401), claude-meter runs a minimal `claude -p` in the background. That makes Claude Code refresh and re-store its own token, after which usage is re-read. Credentials are never written by claude-meter — the CLI owns the rotating refresh token, its lock files, and the Keychain write.
+
+The nudge is a real (if tiny) inference call, so it does draw on your subscription quota: it is pinned to Haiku with `--max-turns 1` to keep that to a rounding error, and is rate-limited to once every 10 minutes so a persistent auth failure can't spawn a process on every poll. Polling usage itself consumes nothing. The **Re-authenticate** menu item does the same thing on demand, bypassing the cooldown.
 
 ## Requirements
 
