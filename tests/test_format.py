@@ -1,6 +1,6 @@
 import pytest
 
-from claude_meter.app import _format_projection, _projected_weekly_pct
+from claude_meter.app import _format_duration, _format_projection, _projected_weekly_pct
 
 DAY = 24 * 60
 
@@ -53,3 +53,20 @@ def test_format_projection(pct, reset_min, expected_projected, expected_day):
 )
 def test_overpace(pct, reset_min, overpace):
     assert (_projected_weekly_pct(pct, reset_min) > 100) is overpace
+
+
+@pytest.mark.parametrize(
+    "minutes,expected",
+    [
+        (None, "unknown"),
+        (0, "now"),
+        (-5, "now"),
+        (45, "45m"),
+        (60, "1h"),
+        (90, "1h 30m"),
+        (DAY, "1d"),
+        (DAY + 120, "1d 2h"),
+    ],
+)
+def test_format_duration(minutes, expected):
+    assert _format_duration(minutes) == expected
