@@ -1,37 +1,50 @@
 import getpass
 import json
-import re
 import subprocess
 import sys
+import time
+from dataclasses import dataclass
 from pathlib import Path
 
 KEYCHAIN_SERVICE = "Claude Code-credentials"
 CREDENTIALS_PATH = Path.home() / ".claude" / ".credentials.json"
+EXPIRY_MARGIN_SECONDS = 5 * 60
 
 
-def _extract_access_token(blob: str) -> str | None:
-    blob = blob.strip()
-    if not blob:
-        return None
+@dataclass
+class Credentials:
+    access_token: str
+    expires_at: float | None = None
+
+    def is_expired(self, now: float | None = None) -> bool:
+        if not self.expires_at:
+            return False
+        now = time.time() if now is None else now
+        return self.expires_at - EXPIRY_MARGIN_SECONDS <= now
+
+
+def _parse_credentials(blob: str) -> Credentials | None:
     try:
         data = json.loads(blob)
-    except json.JSONDecodeError:
-        data = None
-    if isinstance(data, dict):
-        if isinstance(data.get("accessToken"), str):
-            return data["accessToken"]
-        for v in data.values():
-            if isinstance(v, dict) and isinstance(v.get("accessToken"), str):
-                return v["accessToken"]
-    m = re.search(r'"accessToken"\s*:\s*"([^"]+)"', blob)
-    if m:
-        return m.group(1)
-    if re.fullmatch(r"[A-Za-z0-9_\-.~+/=]{20,}", blob):
-        return blob
-    return None
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    oauth = data.get("claudeAiOauth")
+    if not isinstance(oauth, dict):
+        return None
+    token = oauth.get("accessToken")
+    if not isinstance(token, str) or not token.strip():
+        return None
+    expires_at = oauth.get("expiresAt")
+    if isinstance(expires_at, (int, float)) and expires_at > 0:
+        expires = expires_at / 1000.0
+    else:
+        expires = None
+    return Credentials(access_token=token, expires_at=expires)
 
 
-def _read_token_keychain() -> str | None:
+def _read_keychain() -> Credentials | None:
     try:
         result = subprocess.run(
             ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", getpass.getuser(), "-w"],
@@ -40,19 +53,19 @@ def _read_token_keychain() -> str | None:
             text=True,
             timeout=10,
         )
-        return _extract_access_token(result.stdout)
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         return None
+    return _parse_credentials(result.stdout)
 
 
-def _read_token_file() -> str | None:
+def _read_file() -> Credentials | None:
     try:
-        return _extract_access_token(CREDENTIALS_PATH.read_text())
+        return _parse_credentials(CREDENTIALS_PATH.read_text())
     except OSError:
         return None
 
 
-def get_token() -> str | None:
+def get_credentials() -> Credentials | None:
     if sys.platform == "darwin":
-        return _read_token_keychain()
-    return _read_token_file()
+        return _read_keychain()
+    return _read_file()
