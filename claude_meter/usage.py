@@ -1,19 +1,13 @@
 import time
 from dataclasses import dataclass
+from datetime import datetime
 
 import httpx
 
-API_URL = "https://api.anthropic.com/v1/messages"
+API_URL = "https://api.anthropic.com/api/oauth/usage"
 API_HEADERS = {
-    "anthropic-version": "2023-06-01",
     "anthropic-beta": "oauth-2025-04-20",
-    "Content-Type": "application/json",
-    "User-Agent": "claude-code/2.1.5",
-}
-API_BODY = {
-    "model": "claude-haiku-4-5-20251001",
-    "max_tokens": 1,
-    "messages": [{"role": "user", "content": "hi"}],
+    "User-Agent": "claude-code/2.1.226",
 }
 
 _client = httpx.Client(timeout=20.0)
@@ -22,37 +16,77 @@ _client = httpx.Client(timeout=20.0)
 @dataclass
 class UsageData:
     session_pct: int
-    session_reset_minutes: int
+    session_reset_minutes: int | None
     weekly_pct: int
-    weekly_reset_minutes: int
+    weekly_reset_minutes: int | None
 
 
-def _pct(value: str) -> int:
+@dataclass
+class UsageError:
+    kind: str
+    detail: str
+
+
+def _pct(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return int(round(value))
+
+
+def _reset_minutes(resets_at: object) -> int | None:
+    if not isinstance(resets_at, str):
+        return None
     try:
-        return int(round(float(value) * 100))
-    except (ValueError, TypeError):
-        return 0
+        parsed = datetime.fromisoformat(resets_at)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    mins = (parsed.timestamp() - time.time()) / 60.0
+    return int(round(mins)) if mins > 0 else 0
 
 
-def _reset_minutes(reset_ts: str) -> int:
-    try:
-        mins = (float(reset_ts) - time.time()) / 60.0
-        return int(round(mins)) if mins > 0 else 0
-    except (ValueError, TypeError):
-        return 0
+def _window(payload: dict, key: str) -> tuple[int, int | None] | None:
+    window = payload.get(key)
+    if not isinstance(window, dict):
+        return None
+    pct = _pct(window.get("utilization"))
+    if pct is None:
+        return None
+    return pct, _reset_minutes(window.get("resets_at"))
 
 
-def fetch_usage(token: str) -> UsageData | None:
+def fetch_usage(token: str, client: httpx.Client | None = None) -> UsageData | UsageError:
     headers = {**API_HEADERS, "Authorization": f"Bearer {token}"}
     try:
-        resp = _client.post(API_URL, headers=headers, json=API_BODY)
-    except Exception:
-        return None
+        resp = (client or _client).get(API_URL, headers=headers)
+    except Exception as exc:
+        return UsageError(kind="network", detail=type(exc).__name__)
 
-    h = resp.headers
+    if resp.status_code in (401, 403):
+        return UsageError(kind="auth", detail="auth expired")
+    if resp.status_code == 429:
+        return UsageError(kind="ratelimit", detail="rate limited")
+    if resp.status_code != 200:
+        return UsageError(kind="no_data", detail=f"HTTP {resp.status_code}")
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        return UsageError(kind="no_data", detail="invalid response")
+    if not isinstance(payload, dict):
+        return UsageError(kind="no_data", detail="invalid response")
+
+    session = _window(payload, "five_hour")
+    weekly = _window(payload, "seven_day")
+    if session is None or weekly is None:
+        return UsageError(kind="no_data", detail="no usage values")
+
+    session_pct, session_reset = session
+    weekly_pct, weekly_reset = weekly
     return UsageData(
-        session_pct=_pct(h.get("anthropic-ratelimit-unified-5h-utilization", "0")),
-        session_reset_minutes=_reset_minutes(h.get("anthropic-ratelimit-unified-5h-reset", "0")),
-        weekly_pct=_pct(h.get("anthropic-ratelimit-unified-7d-utilization", "0")),
-        weekly_reset_minutes=_reset_minutes(h.get("anthropic-ratelimit-unified-7d-reset", "0")),
+        session_pct=session_pct,
+        session_reset_minutes=session_reset,
+        weekly_pct=weekly_pct,
+        weekly_reset_minutes=weekly_reset,
     )
