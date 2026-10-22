@@ -2,8 +2,6 @@
 
 macOS menu bar app that shows your Claude API usage.
 
-![claude-meter demo](https://i.gyazo.com/c909657d09e8b9f80073a5469c1c9807.png)
-
 ## How it works
 
 Polls `api.anthropic.com/api/oauth/usage` and reads the `five_hour` / `seven_day` utilization it returns. This endpoint consumes no inference quota. Authentication reuses the OAuth token that Claude Code stores in Keychain — no API key setup required.
