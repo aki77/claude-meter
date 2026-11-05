@@ -89,15 +89,6 @@ def test_status_codes(status, kind):
     [
         _payload(),
         _payload(five_hour={"utilization": 22.0, "resets_at": _iso(10)}, seven_day=None),
-        _payload(five_hour={"resets_at": _iso(10)}, seven_day={"utilization": 21.0}),
-        _payload(
-            five_hour={"utilization": None, "resets_at": _iso(10)},
-            seven_day={"utilization": 21.0, "resets_at": _iso(10)},
-        ),
-        _payload(
-            five_hour={"utilization": "22", "resets_at": _iso(10)},
-            seven_day={"utilization": 21.0, "resets_at": _iso(10)},
-        ),
         {},
     ],
 )
@@ -105,6 +96,24 @@ def test_missing_values_are_no_data(payload):
     result = fetch_usage("tok", client=_client(_responder(200, payload)))
     assert isinstance(result, UsageError)
     assert result.kind == "no_data"
+
+
+@pytest.mark.parametrize(
+    "five_hour",
+    [
+        None,
+        {"resets_at": _iso(10)},
+        {"utilization": None, "resets_at": _iso(10)},
+        {"utilization": "22", "resets_at": _iso(10)},
+    ],
+)
+def test_plan_without_session_limit_reports_weekly_only(five_hour):
+    payload = _payload(five_hour=five_hour, seven_day={"utilization": 21.0, "resets_at": _iso(10)})
+    result = fetch_usage("tok", client=_client(_responder(200, payload)))
+    assert isinstance(result, UsageData)
+    assert result.session_pct is None
+    assert result.session_reset_minutes is None
+    assert result.weekly_pct == 21
 
 
 def test_non_json_200_is_no_data():

@@ -82,7 +82,9 @@ def _format_duration(minutes: int | None) -> str:
     return f"{mins}m"
 
 
-def _format_row(label: str, pct: int, reset_minutes: int | None, suffix: str = "") -> str:
+def _format_row(label: str, pct: int | None, reset_minutes: int | None, suffix: str = "") -> str:
+    if pct is None:
+        return f"{label}: no limit"
     return f"{label}: {pct}%  (resets in {_format_duration(reset_minutes)}){suffix}"
 
 
@@ -236,6 +238,9 @@ class ClaudeMeterApp(rumps.App):
         )
         warn = False
         for series, pct, reset_minutes in pairs:
+            if pct is None:
+                series.menu_item.title = _format_row(series.label, pct, reset_minutes)
+                continue
             crossed = series.update(pct, reset_minutes)
             if crossed:
                 self._notify(
@@ -253,7 +258,10 @@ class ClaudeMeterApp(rumps.App):
                 warn = True
 
         prefix = f"{ALERT_MARK} " if warn else ""
-        self.title = f"{prefix}{data.session_pct}%"
+        if data.session_pct is None:
+            self.title = f"{prefix}7d {data.weekly_pct}%"
+        else:
+            self.title = f"{prefix}{data.session_pct}%"
 
     @staticmethod
     def _notify(title: str, subtitle: str) -> None:
