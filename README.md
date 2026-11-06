@@ -8,6 +8,8 @@ Polls `api.anthropic.com/api/oauth/usage` and reads the `five_hour` / `seven_day
 
 When usage cannot be read the title shows `?` with the reason (expired auth, rate limit, network error) rather than `0%`, and the last known reading is kept and marked `(stale)`.
 
+TLS is verified against the macOS system trust store (via `truststore`) rather than certifi's bundle, so it works behind TLS-inspecting corporate proxies such as Zscaler whose root certificate is installed in the Keychain.
+
 ### Keeping the token fresh
 
 The OAuth token Claude Code stores in Keychain expires after a few hours, and it is only refreshed when the CLI itself talks to the API. If you mostly use the Claude desktop app, nothing refreshes it — which used to leave the meter stuck at `0%`.
