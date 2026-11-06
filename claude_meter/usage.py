@@ -1,8 +1,10 @@
+import ssl
 import time
 from dataclasses import dataclass
 from datetime import datetime
 
 import httpx
+import truststore
 
 API_URL = "https://api.anthropic.com/api/oauth/usage"
 API_HEADERS = {
@@ -10,7 +12,7 @@ API_HEADERS = {
     "User-Agent": "claude-code/2.1.226",
 }
 
-_client = httpx.Client(timeout=20.0)
+_client = httpx.Client(timeout=20.0, verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT))
 
 
 @dataclass
